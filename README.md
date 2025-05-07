@@ -9,11 +9,27 @@ A collection of Python scripts for executing database queries and generating rep
   - boto3
   - psycopg2
   - python-dotenv
+  - pandas
 
-Install the required packages using pip:
+## Installation
+
+1. Clone the repository:
 
 ```bash
-pip install boto3 psycopg2-binary python-dotenv
+git clone <repository-url>
+cd query_executor
+```
+
+2. Install dependencies using pip:
+
+```bash
+pip install -r requirements.txt
+```
+
+Or install packages individually:
+
+```bash
+pip install boto3 psycopg2-binary python-dotenv pandas
 ```
 
 ## Configuration
