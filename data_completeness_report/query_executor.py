@@ -1,9 +1,12 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import csv
 import boto3
 import psycopg2
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from sql_queries.data_completeness_queries import loan_officers_query, sales_query, realtors_query, loans_query
 
 # Load .env file
 load_dotenv()
@@ -42,17 +45,11 @@ def connect_db():
     )
 
 # --- SQL Queries ---
-QUERIES = {
-    'Loan Officers Count': '''select COUNT(*) FROM loan_officers;''',
-    'Loan Officers Missing License Number': '''select COUNT(*) FROM loan_officers where license_number is null;''',
-    'Loan Officers Missing Name and Full Name': '''select COUNT(*) FROM loan_officers where name is  null and full_name is null;''',
-    'Loan Officers Missing Company Name': '''select COUNT(*) FROM loan_officers where (name is not null OR full_name is not null) and company_name is null and company_name_2 is null and verified_company_name is null;''',
-    'Loan Officers Missing Company License Number': '''select COUNT(*) FROM loan_officers where (name is not null OR full_name is not null) and company_license_number  is null and company_license_number_2  is null and verified_company_license_number  is null;''',
-    'Loan Officers Missing City': '''select COUNT(*) FROM loan_officers where city is null;''',
-    'Loan Officers Missing State': '''select COUNT(*) FROM loan_officers where state is null;''',
-    'Loan Officers Missing Zip': '''select COUNT(*) FROM loan_officers where zip_code  is null;''',
-    'Loan Officers External ID Not Null': '''select COUNT(*) FROM loan_officers where external_id is not null;''',
-}
+QUERIES = sales_query
+
+# Determine output filename based on query type
+query_type = 'realtor' if QUERIES == realtors_query else 'loan_officer' if QUERIES == loan_officers_query else 'loan' if QUERIES == loans_query else 'sale'
+output_filename = f"{query_type}_counts_{ENV}.csv"
 
 # --- Run Query Using Shared DB Connection ---
 def run_query_with_connection(name_query_tuple):
@@ -78,12 +75,12 @@ def main():
             results.append(future.result())
 
     # Save to CSV
-    with open(f"loan_officers_counts_{ENV}.csv", mode="w", newline="") as file:
+    with open(output_filename, mode="w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["Query Description", "Count"])
         writer.writerows(results)
 
-    print(f"✅ All counts saved to 'loan_officers_counts_{ENV}.csv'")
+    print(f"✅ All counts saved to '{output_filename}'")
 
 if __name__ == "__main__":
     main()
