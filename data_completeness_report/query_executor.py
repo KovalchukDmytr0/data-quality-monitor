@@ -10,12 +10,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sql_queries.data_completeness_queries import (
-    loan_officers_query, sales_query, realtors_query, loans_query
+    loan_officers_query, sales_query, realtors_query, loans_query, zebra_query
 )
 
 # Load environment variables
 load_dotenv()
-ENV = 'prod'
+ENV = 'dev' # 👈 Change to prod, dev, or stage as needed
 
 REGION = os.getenv('REGION')
 DB_HOST = os.getenv(f'{ENV.upper()}_DB_HOST')
@@ -27,13 +27,14 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = os.getenv(f'{ENV.upper()}_AWS_SECRET_ACCES
 os.environ['AWS_SESSION_TOKEN'] = os.getenv(f'{ENV.upper()}_AWS_SESSION_TOKEN')
 
 # Choose which query set to use
-QUERIES = sales_query  # 👈 Change to loans_query, etc. as needed
+QUERIES = zebra_query  # 👈 Change to loans_query, etc. as needed
 
 # Infer query type for filename
 query_type = (
-    'realtor' if QUERIES == realtors_query else
+    'realtor' if QUERIES == realtors_query else 
     'loan_officer' if QUERIES == loan_officers_query else
     'loan' if QUERIES == loans_query else
+    'zebra' if QUERIES == zebra_query else
     'sale'
 )
 output_filename = f"{query_type}_counts_{ENV}.csv"
@@ -68,7 +69,7 @@ def run_query(name_query_tuple):
         return {'Query Description': name, 'Count': f"Error: {str(e)}"}
 
 def main():
-    max_threads = min(15, len(QUERIES))
+    max_threads = min(20, len(QUERIES))
     results = []
 
     with ThreadPoolExecutor(max_workers=max_threads) as executor:

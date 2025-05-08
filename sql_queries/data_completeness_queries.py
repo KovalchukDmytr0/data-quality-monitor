@@ -1,4 +1,11 @@
-__all__ = ['loan_officers_query', 'sales_query', 'realtors_query', 'loans_query']
+__all__ = ['loan_officers_query', 'sales_query', 'realtors_query', 'loans_query', 'zebra_query']
+
+# Table name for zebra queries
+zebra_tables = {
+    'md': 'zebra_md',
+    'ut': 'zebra_ut'
+}
+ZEBRA_TABLE = zebra_tables['ut']
 
 loan_officers_query = {
     'Loan Officers Count': '''select COUNT(*) FROM loan_officers;''',
@@ -56,3 +63,26 @@ loans_query = {
     'Cash Buyer Loans Count': '''SELECT COUNT(*) FROM loans WHERE deleted = false AND loan_date >= CURRENT_DATE - INTERVAL '5 years' and cash_buyer = true;''',
     'Loans Owner Name Null': '''SELECT COUNT(*) FROM loans WHERE deleted = false AND loan_date >= CURRENT_DATE - INTERVAL '5 years' and owner_name  is null;''',
 }
+
+zebra_query = {
+    'Total Records': f'SELECT COUNT(*) FROM {ZEBRA_TABLE};',
+    'Missing Listing Agent Data': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (main_agent IS NULL OR main_agent = \'\' OR main_agent = \'null\') AND (main_agent_company IS NULL OR main_agent_company = \'\' OR main_agent_company = \'null\') AND (main_agent_license IS NULL OR main_agent_license = \'\' OR main_agent_license = \'null\');',
+    'Missing Sale Date': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (sold_date IS NULL OR sold_date = \'\') AND (property_history = \'\' OR property_history IS NULL);',
+    'Missing Sold Price': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (sold_price IS NULL OR sold_price = \'\') AND (property_history = \'\' OR property_history IS NULL);',
+    'Complete Records in Valuable Fields': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (buyer_agent IS NOT NULL AND buyer_agent <> \'\') AND (buyer_agent_license IS NOT NULL AND buyer_agent_license <> \'\') AND (main_agent_license IS NOT NULL AND buyer_agent <> \'\') AND (main_agent IS NOT NULL AND main_agent <> \'\') AND (sold_price IS NOT NULL AND sold_price <> \'\') AND (sold_date IS NOT NULL AND sold_date <> \'\') AND (property_address IS NOT NULL AND property_address <> \'\');',
+    'Unique Records (deduplicated)': f'WITH DeduplicatedRecords AS (SELECT property_address, sold_date, sold_price, ROW_NUMBER() OVER (PARTITION BY TRIM(LOWER(property_address)), sold_date, sold_price ORDER BY CASE WHEN sold_date ~ \'^[A-Za-z]{{3}} \\d{{1,2}}, \\d{{4}}$\' THEN TO_DATE(sold_date, \'Mon DD, YYYY\') ELSE NULL END DESC) AS row_num FROM {ZEBRA_TABLE} WHERE sold_date ~ \'^[A-Za-z]{{3}} \\d{{1,2}}, \\d{{4}}$\') SELECT COUNT(*) FROM DeduplicatedRecords WHERE row_num = 1;',
+    'Missing Buyer Agent Data': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (buyer_agent IS NULL OR buyer_agent = \'\') AND (buyer_agent_company IS NULL OR buyer_agent_company = \'\') AND (buyer_agent_license IS NULL OR buyer_agent_license = \'\');',
+    'Main Agent Company Missing': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE main_agent <> \'\' AND main_agent_company = \'\';',
+    'Buyer Agent Company Missing': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE buyer_agent <> \'\' AND buyer_agent_company = \'\';',
+    'Co-Agent Company Missing': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE co_agent <> \'\' AND co_agent_company = \'\';',
+    'Missing Main Agent Photo': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (main_agent <> \'\' OR main_agent IS NOT NULL) AND (main_agent_photo = \'null\' OR main_agent_photo = \'\' OR main_agent_photo IS NULL);',
+    'Missing Buyer Agent Photo': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE (buyer_agent <> \'\' OR buyer_agent IS NOT NULL) AND (buyer_agent_photo = \'null\' OR buyer_agent_photo = \'\' OR buyer_agent_photo IS NULL);',
+    'Missing Home Photo': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE home_photo = \'\' OR home_photo = \'null\';',
+    'Sold Date "Not Listed for Sale"': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE sold_date ILIKE \'%NOT LISTED FOR SALE%\' AND property_history = \'\';',
+    'Missing Environment Factors': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE environment_factors = \'\' OR environment_factors IS NULL;',
+    'Missing Property History': f'SELECT COUNT(*) FROM {ZEBRA_TABLE} WHERE property_history = \'\' OR property_history IS NULL;',
+    'Unique Agents': f'WITH agent_data AS (SELECT main_agent AS agent_name, main_agent_company AS company FROM {ZEBRA_TABLE} WHERE main_agent IS NOT NULL UNION SELECT buyer_agent, buyer_agent_company FROM {ZEBRA_TABLE} WHERE buyer_agent IS NOT NULL) SELECT COUNT(DISTINCT ROW(agent_name, company)) AS unique_agents_total FROM agent_data;',
+    'Unique License Numbers': f'WITH agent_data AS (SELECT main_agent AS agent_name, main_agent_company AS company, main_agent_license AS license FROM {ZEBRA_TABLE} WHERE main_agent = \'\' UNION SELECT buyer_agent, buyer_agent_company, buyer_agent_license FROM {ZEBRA_TABLE} WHERE buyer_agent <> \'\') SELECT COUNT(DISTINCT (agent_name, company)) AS unique_agents_total, COUNT(DISTINCT license) FILTER (WHERE license <> \'null\') AS unique_licenses_total, ROUND(COUNT(DISTINCT license) FILTER (WHERE license <> \'null\') * 100.0 / NULLIF(COUNT(DISTINCT (agent_name, company)), 0), 2) AS percentage_with_license FROM agent_data;',
+    'Unique Phone Numbers': f'WITH agent_data AS (SELECT main_agent AS agent_name, main_agent_company AS company, main_agent_phone AS phone FROM {ZEBRA_TABLE} WHERE main_agent IS NOT NULL UNION SELECT buyer_agent, buyer_agent_company, buyer_agent_phone FROM {ZEBRA_TABLE} WHERE buyer_agent IS NOT NULL) SELECT COUNT(DISTINCT (agent_name, company)) AS unique_agents_total, COUNT(DISTINCT phone) FILTER (WHERE phone IS NOT NULL) AS unique_phone_total, ROUND(COUNT(DISTINCT phone) FILTER (WHERE phone IS NOT NULL) * 100.0 / NULLIF(COUNT(DISTINCT (agent_name, company)), 0), 2) AS percentage_with_phone FROM agent_data;'
+}
+
