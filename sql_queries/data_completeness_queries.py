@@ -1,4 +1,4 @@
-__all__ = ['loan_officers_query', 'sales_query', 'realtors_query', 'loans_query', 'zebra_query']
+__all__ = ['loan_officers_query', 'sales_query', 'realtors_query', 'loans_query', 'zebra_query', 'suspicious_realtor_patterns']
 
 # Table name for zebra queries
 zebra_tables = {
@@ -85,4 +85,31 @@ zebra_query = {
     'Unique License Numbers': f'WITH agent_data AS (SELECT main_agent AS agent_name, main_agent_company AS company, main_agent_license AS license FROM {ZEBRA_TABLE} WHERE main_agent = \'\' UNION SELECT buyer_agent, buyer_agent_company, buyer_agent_license FROM {ZEBRA_TABLE} WHERE buyer_agent <> \'\') SELECT COUNT(DISTINCT (agent_name, company)) AS unique_agents_total, COUNT(DISTINCT license) FILTER (WHERE license <> \'null\') AS unique_licenses_total, ROUND(COUNT(DISTINCT license) FILTER (WHERE license <> \'null\') * 100.0 / NULLIF(COUNT(DISTINCT (agent_name, company)), 0), 2) AS percentage_with_license FROM agent_data;',
     'Unique Phone Numbers': f'WITH agent_data AS (SELECT main_agent AS agent_name, main_agent_company AS company, main_agent_phone AS phone FROM {ZEBRA_TABLE} WHERE main_agent IS NOT NULL UNION SELECT buyer_agent, buyer_agent_company, buyer_agent_phone FROM {ZEBRA_TABLE} WHERE buyer_agent IS NOT NULL) SELECT COUNT(DISTINCT (agent_name, company)) AS unique_agents_total, COUNT(DISTINCT phone) FILTER (WHERE phone IS NOT NULL) AS unique_phone_total, ROUND(COUNT(DISTINCT phone) FILTER (WHERE phone IS NOT NULL) * 100.0 / NULLIF(COUNT(DISTINCT (agent_name, company)), 0), 2) AS percentage_with_phone FROM agent_data;'
 }
+
+suspicious_realtor_patterns = {
+    'Realtors Name Starts With "test"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE 'test%' OR r.full_name ILIKE 'test%');''',
+    'Realtors Name Ends With "test"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%test' OR r.full_name ILIKE '%test');''',
+    'Realtors Name Contains "not a member"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%not a member%' OR r.full_name ILIKE '%not a member%');''',
+    'Realtors Name Contains "out of state"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%out of state%' OR r.full_name ILIKE '%out of state%');''',
+    'Realtors Name Starts With "none"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE 'none %' OR r.full_name ILIKE 'none %');''',
+    'Realtors Name Ends With "none"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '% none' OR r.full_name ILIKE '% none');''',
+    'Realtors Name Ends With "non"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '% non' OR r.full_name ILIKE '% non');''',
+    'Realtors Name Starts With "non"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE 'non %' OR r.full_name ILIKE 'non %');''',
+    'Realtors Name Contains "nonmember"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%nonmember%' OR r.full_name ILIKE '%nonmember%');''',
+    'Realtors Name Starts With "other"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE 'other %' OR r.full_name ILIKE 'other %');''',
+    'Realtors Name Contains "Member"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Member%' OR r.full_name ILIKE '%Member%');''',
+    'Realtors Name Contains "Nonmls"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Nonmls%' OR r.full_name ILIKE '%Nonmls%');''',
+    'Realtors Name Contains "Outside"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Outside%' OR r.full_name ILIKE '%Outside%');''',
+    'Realtors Name Contains "null"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%null %' OR r.full_name ILIKE '%null %');''',
+    'Realtors Name Contains "AGENT"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%AGENT%' OR r.full_name ILIKE '%AGENT%');''',
+    'Realtors Name Contains "Unidentified"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Unidentified%' OR r.full_name ILIKE '%Unidentified%');''',
+    'Realtors Name Contains "RMLS"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%RMLS%' OR r.full_name ILIKE '%RMLS%');''',
+    'Realtors Name Contains "Default"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Default%' OR r.full_name ILIKE '%Default%');''',
+    'Realtors Name Contains "Subscriber"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Subscriber%' OR r.full_name ILIKE '%Subscriber%');''',
+    'Realtors Name Contains "NON-MBR"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%NON-MBR%' OR r.full_name ILIKE '%NON-MBR%');''',
+    'Realtors Name Contains "Represented"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Represented%' OR r.full_name ILIKE '%Represented%');''',
+    'Realtors Name Contains "listing"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%listing%' OR r.full_name ILIKE '%listing%');''',
+    'Realtors Name Contains "Participant"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Participant%' OR r.full_name ILIKE '%Participant%');''',
+}
+
 
