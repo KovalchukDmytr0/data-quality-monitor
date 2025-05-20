@@ -16,7 +16,7 @@ from sql_queries.data_completeness_queries import (
 
 # Load environment variables
 load_dotenv()
-ENV = 'prod' # 👈 Change to prod, dev, or stage as needed
+ENV = 'PROD' # 👈 Change to prod, dev, or stage as needed
 
 REGION = os.getenv('REGION')
 DB_HOST = os.getenv(f'{ENV.upper()}_DB_HOST')
