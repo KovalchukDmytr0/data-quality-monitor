@@ -1,11 +1,14 @@
-__all__ = ['loan_officers_query', 'sales_query', 'realtors_query', 'loans_query', 'zebra_query', 'suspicious_realtor_patterns']
+__all__ = ['loan_officers_query', 'sales_query', 'realtors_query', 
+           'loans_query', 'zebra_query', 'suspicious_realtor_patterns', 'active_buyer_completeness_report']
 
 # Table name for zebra queries
 zebra_tables = {
     'md': 'zebra_md',
-    'ut': 'zebra_ut'
+    'ut': 'zebra_ut',
+    'utV2': 'zebra_ut_v2',
+    'utV2full': 'zebra_ut_v2_full'
 }
-ZEBRA_TABLE = zebra_tables['ut']
+ZEBRA_TABLE = zebra_tables['utV2full']
 
 loan_officers_query = {
     'Loan Officers Count': '''select COUNT(*) FROM loan_officers;''',
@@ -111,5 +114,240 @@ suspicious_realtor_patterns = {
     'Realtors Name Contains "listing"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%listing%' OR r.full_name ILIKE '%listing%');''',
     'Realtors Name Contains "Participant"': f'''SELECT COUNT(*) FROM realtors r WHERE r.duplicate = false AND r.hidden = false AND (r.name ILIKE '%Participant%' OR r.full_name ILIKE '%Participant%');''',
 }
+
+active_buyer_completeness_report = {
+    'Total Active Home Shoppers': '''SELECT COUNT(*) FROM properties WHERE home_shopper_active = true;''',
+
+    'Owner Occupied: True': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'owner_occupied')::boolean = true;
+    ''',
+
+    'Owner Occupied: False': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'owner_occupied')::boolean = false;
+    ''',
+
+    'In-State Shopper Only': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true
+        AND (last_entry.elem ->> 'in_state_shopper')::boolean = true
+        AND (last_entry.elem ->> 'out_of_state_shopper')::boolean = false;
+    ''',
+
+    'Out-of-State Shopper Only': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true
+        AND (last_entry.elem ->> 'in_state_shopper')::boolean = false
+        AND (last_entry.elem ->> 'out_of_state_shopper')::boolean = true;
+    ''',
+
+    'Both In-State and Out-of-State Shopper': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true
+        AND (last_entry.elem ->> 'in_state_shopper')::boolean = true
+        AND (last_entry.elem ->> 'out_of_state_shopper')::boolean = true;
+    ''',
+
+    'Visits > 1': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'unique_obs_count')::int > 1;
+    ''',
+
+    'Visits > 3': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'unique_obs_count')::int > 3;
+    ''',
+
+    'Visits > 5': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'unique_obs_count')::int > 5;
+    ''',
+
+    'Visits > 7': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'unique_obs_count')::int > 7;
+    ''',
+
+    'Visits > 9': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'unique_obs_count')::int > 9;
+    ''',
+
+    'Last Visit Within 10 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '10 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '10 days')
+        );
+    ''',
+
+    'Last Visit Within 30 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '30 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '30 days')
+        );
+    ''',
+
+    'Last Visit Within 45 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '45 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '45 days')
+        );
+    ''',
+
+    'Last Visit Within 60 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '60 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '60 days')
+        );
+    ''',
+
+    'Last Visit Within 90 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '90 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '90 days')
+        );
+    ''',
+
+    'Last Visit Within 120 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '120 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '120 days')
+        );
+    ''',
+
+    'Last Visit Within 200 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '200 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '200 days')
+        );
+    ''',
+
+    'Last Visit Within 300 Days': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (
+          (last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'last_observed')::timestamp >= CURRENT_DATE - INTERVAL '300 days') OR
+          (NOT last_entry.elem ? 'last_observed' AND (last_entry.elem ->> 'recorded_date')::date >= CURRENT_DATE - INTERVAL '300 days')
+        );
+    ''',
+
+    'LMI Property Count = 0': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'lmi_property_count')::int = 0;
+    ''',
+
+    'LMI Property Count > 0': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'lmi_property_count')::int > 0;
+    ''',
+
+    'Visited Unique Properties > 3': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true AND (last_entry.elem ->> 'unique_property_count')::int > 3;
+    ''',
+
+    'High Listing Price < Low Listing Price (Anomaly)': '''
+        SELECT COUNT(*) FROM properties p,
+        LATERAL (
+          SELECT elem FROM jsonb_array_elements(p.home_shopper -> 'hs_history') WITH ORDINALITY AS t(elem, idx)
+          ORDER BY idx DESC LIMIT 1
+        ) last_entry
+        WHERE p.home_shopper_active = true
+        AND (last_entry.elem ->> 'listing_price_avg_high')::numeric < (last_entry.elem ->> 'listing_price_avg_low')::numeric;
+    '''
+}
+
+
 
 

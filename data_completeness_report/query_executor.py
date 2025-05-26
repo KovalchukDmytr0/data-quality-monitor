@@ -5,18 +5,19 @@ import psycopg2
 import pandas as pd
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 # Ensure module paths work when running as script
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sql_queries.data_completeness_queries import (
     loan_officers_query, sales_query, realtors_query, loans_query, zebra_query, 
-    suspicious_realtor_patterns
+    suspicious_realtor_patterns, active_buyer_completeness_report
 )
 
 # Load environment variables
 load_dotenv()
-ENV = 'PROD' # 👈 Change to prod, dev, or stage as needed
+ENV = 'dev' # 👈 Change to prod, dev, or stage as needed
 
 REGION = os.getenv('REGION')
 DB_HOST = os.getenv(f'{ENV.upper()}_DB_HOST')
@@ -28,7 +29,7 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = os.getenv(f'{ENV.upper()}_AWS_SECRET_ACCES
 os.environ['AWS_SESSION_TOKEN'] = os.getenv(f'{ENV.upper()}_AWS_SESSION_TOKEN')
 
 # Choose which query set to use
-QUERIES = suspicious_realtor_patterns  # 👈 Change to loans_query, etc. as needed
+QUERIES = zebra_query  # 👈 Change to loans_query, etc. as needed
 
 # Infer query type for filename
 query_type = (
@@ -37,9 +38,13 @@ query_type = (
     'loan' if QUERIES == loans_query else
     'zebra' if QUERIES == zebra_query else
     'suspicious_realtor_patterns' if QUERIES == suspicious_realtor_patterns else
+    'active_buyer_completeness_report' if QUERIES == active_buyer_completeness_report else
     'sale'
 )
-output_filename = f"{query_type}_counts_{ENV}.csv"
+
+# 🕒 Add timestamp to CSV filename
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+output_filename = f"{query_type}_counts_{ENV}_{timestamp}.csv"
 
 def get_iam_token():
     client = boto3.client('rds', region_name=REGION)
