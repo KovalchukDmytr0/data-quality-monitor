@@ -29,7 +29,7 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = os.getenv(f'{ENV.upper()}_AWS_SECRET_ACCES
 os.environ['AWS_SESSION_TOKEN'] = os.getenv(f'{ENV.upper()}_AWS_SESSION_TOKEN')
 
 # Choose which query set to use
-QUERIES = zebra_query  # 👈 Change to loans_query, etc. as needed
+QUERIES =  loans_query # 👈 Change to loans_query, etc. as needed
 
 # Infer query type for filename
 query_type = (
