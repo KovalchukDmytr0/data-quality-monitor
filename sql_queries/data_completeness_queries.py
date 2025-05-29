@@ -7,9 +7,12 @@ zebra_tables = {
     'ut': 'zebra_ut',
     'utV2': 'zebra_ut_v2',
     'utV2full': 'zebra_ut_v2_full',
-    'id': 'zebra_id_v2'
+    'id': 'zebra_id_v2',
+    'dc': 'zebra_dс_v2',
+    'de': 'zebra_de_v2',
+    'pa': 'zebra_pa_v2'
 }
-ZEBRA_TABLE = zebra_tables['id']
+ZEBRA_TABLE = zebra_tables['pa']
 
 loan_officers_query = {
     # Total Counts
