@@ -3,8 +3,8 @@ from rapidfuzz import fuzz
 from datetime import datetime
 
 # === 🔧 CONFIGURATION ===
-file1_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/oleg_minzu_iqi_data.csv'
-file2_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/Oleg Minzu export 12_01_2017 -05_19_25.csv'
+file1_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/sandavol_v3.csv'
+file2_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/Michael Sandoval 12_01_17-05_19_25.csv'
 
 comparison_keys = [
     (['street_address', 'unit_number', 'city', 'state', 'zip_code'], 
