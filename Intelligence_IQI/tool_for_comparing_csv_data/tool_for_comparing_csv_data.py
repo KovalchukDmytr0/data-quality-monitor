@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import logging
 
 # === 🔧 CONFIGURATION ===
-file1_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/CARRIE_LINGO_db.csv'
-file2_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/CARRIE LINGO-REAL_ESTATE_AGENT-transactions.csv'
+file1_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/tod_levitt_3_db.csv'
+file2_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/TODD LEVITT-REAL_ESTATE_AGENT-transactions.csv'
 
 similarity_threshold = 90
 date_tolerance_days = 90  # ±3 months

@@ -12,8 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sql_queries.data_completeness_queries import (
     loan_officers_query, sales_query, realtors_query, loans_query, zebra_query, 
-    suspicious_realtor_patterns, active_buyer_completeness_report, 
-    agents_monthly_testing
+    suspicious_realtor_patterns, active_buyer_completeness_report
 )
 
 # Load environment variables
@@ -30,7 +29,7 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = os.getenv(f'{ENV.upper()}_AWS_SECRET_ACCES
 os.environ['AWS_SESSION_TOKEN'] = os.getenv(f'{ENV.upper()}_AWS_SESSION_TOKEN')
 
 # Choose which query set to use
-QUERIES =  agents_monthly_testing # 👈 Change to loans_query, etc. as needed
+QUERIES = zebra_query # 👈 Change to loans_query, etc. as needed
 
 # Infer query type for filename
 query_type = (
@@ -40,7 +39,6 @@ query_type = (
     'zebra' if QUERIES == zebra_query else
     'suspicious_realtor_patterns' if QUERIES == suspicious_realtor_patterns else
     'active_buyer_completeness_report' if QUERIES == active_buyer_completeness_report else
-    'agents_monthly_testing' if QUERIES == agents_monthly_testing else
     'sale'
 )
 

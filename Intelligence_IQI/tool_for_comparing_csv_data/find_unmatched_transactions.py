@@ -5,7 +5,6 @@ import pandas as pd
 import psycopg2
 import boto3
 from datetime import datetime
-from rapidfuzz import fuzz
 from dotenv import load_dotenv
 
 # === 📝 LOGGING SETUP ===
@@ -14,7 +13,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("address_matching_log.txt", mode='w')
+        logging.FileHandler("bulk_address_query_log.txt", mode='w')
     ]
 )
 log = logging.getLogger(__name__)
@@ -22,8 +21,7 @@ log.setLevel(logging.DEBUG)
 
 # === 🔐 ENV CONFIGURATION ===
 load_dotenv()
-ENV = 'dev'
-
+ENV = 'lab'
 REGION = os.getenv('REGION')
 DB_HOST = os.getenv(f'{ENV.upper()}_DB_HOST')
 DB_NAME = os.getenv(f'{ENV.upper()}_DB_NAME')
@@ -52,36 +50,29 @@ def connect_db():
         sslmode='require'
     )
 
-# === 🧼 ADDRESS NORMALIZATION ===
-def build_address(row, cols):
-    return ' '.join(
-        str(row.get(col, '')).strip()
-        for col in cols if pd.notnull(row.get(col)) and row.get(col) != 'NaT'
-    ).lower()
+# === 📘 US STATE NORMALIZATION ===
+STATE_ABBREVIATIONS = {
+    'ALABAMA': 'AL', 'ALASKA': 'AK', 'ARIZONA': 'AZ', 'ARKANSAS': 'AR',
+    'CALIFORNIA': 'CA', 'COLORADO': 'CO', 'CONNECTICUT': 'CT', 'DELAWARE': 'DE',
+    'FLORIDA': 'FL', 'GEORGIA': 'GA', 'HAWAII': 'HI', 'IDAHO': 'ID', 'ILLINOIS': 'IL',
+    'INDIANA': 'IN', 'IOWA': 'IA', 'KANSAS': 'KS', 'KENTUCKY': 'KY', 'LOUISIANA': 'LA',
+    'MAINE': 'ME', 'MARYLAND': 'MD', 'MASSACHUSETTS': 'MA', 'MICHIGAN': 'MI',
+    'MINNESOTA': 'MN', 'MISSISSIPPI': 'MS', 'MISSOURI': 'MO', 'MONTANA': 'MT',
+    'NEBRASKA': 'NE', 'NEVADA': 'NV', 'NEW HAMPSHIRE': 'NH', 'NEW JERSEY': 'NJ',
+    'NEW MEXICO': 'NM', 'NEW YORK': 'NY', 'NORTH CAROLINA': 'NC', 'NORTH DAKOTA': 'ND',
+    'OHIO': 'OH', 'OKLAHOMA': 'OK', 'OREGON': 'OR', 'PENNSYLVANIA': 'PA',
+    'RHODE ISLAND': 'RI', 'SOUTH CAROLINA': 'SC', 'SOUTH DAKOTA': 'SD', 'TENNESSEE': 'TN',
+    'TEXAS': 'TX', 'UTAH': 'UT', 'VERMONT': 'VT', 'VIRGINIA': 'VA', 'WASHINGTON': 'WA',
+    'WEST VIRGINIA': 'WV', 'WISCONSIN': 'WI', 'WYOMING': 'WY'
+}
 
-# === 🔎 FUZZY MATCHING ===
-def best_fuzzy_match(csv_full_address, db_results):
-    best_score = 0
-    best_result = None
-    for db_addr, db_id in db_results:
-        if db_addr:
-            score = fuzz.token_sort_ratio(csv_full_address, db_addr.lower())
-            log.debug(f"🔁 Comparing: '{csv_full_address}' ↔ '{db_addr}' → Score: {score}")
-            if score > best_score:
-                best_score = score
-                best_result = (db_addr, db_id)
-    if best_score >= 80:  # 👈 lowered from 90 to 80
-        log.info(f"✅ Match: '{csv_full_address}' → '{best_result[0]}' (Score: {best_score})")
-    else:
-        log.info(f"❌ No match: '{csv_full_address}' (Best Score: {best_score})")
-    return best_result if best_score >= 80 else None  # 👈 also updated threshold here
-
+def normalize_state(state_name):
+    return STATE_ABBREVIATIONS.get(state_name.strip().upper(), state_name.strip().upper())
 
 # === 🚀 MAIN EXECUTION ===
 def main():
     log.info("📥 Loading CSV...")
-    csv_path = '/Users/dmytrokovalchuk/unmatched_from_file2_20250604_183151.csv'
-
+    csv_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/Agent investigations - Michael Horwitz (2025-05-29)_ unmatched_2.csv'
     if not os.path.exists(csv_path):
         log.error(f"❌ File not found: {csv_path}")
         return
@@ -92,90 +83,77 @@ def main():
         log.error(f"❌ Failed to load CSV: {e}")
         return
 
-    # Clean object columns
-    for col in df.columns:
-        if df[col].dtype == object:
-            df[col] = df[col].fillna('')
+    required_cols = ['Address', 'City', 'State', 'Zip Code']
+    for col in required_cols:
+        if col not in df.columns:
+            log.error(f"❌ Missing required column: {col}")
+            return
 
-    # Define column sets
-    street_cols = ['CLIP']
-    full_cols = ['Address', 'City', 'State', 'Zip Code']
+    df = df[required_cols].dropna()
+    df['State'] = df['State'].apply(normalize_state)
 
-    log.info("🔧 Building address columns...")
-    df['street_address'] = df.apply(lambda row: build_address(row, street_cols), axis=1)
-    df['full_address'] = df.apply(lambda row: build_address(row, full_cols), axis=1)
+    log.info("🧠 Building WHERE clauses...")
+    conditions = []
+    for _, row in df.iterrows():
+        city = row['City'].strip().lower()
+        zip_code = str(row['Zip Code']).strip()
+        state = row['State'].strip()
+        street = row['Address'].strip().lower()
 
-    # === 🔍 Optimized Bulk CLIP Query ===
-    log.info("🚀 Querying DB once with all unique CLIPs...")
+        clause = f"(city ILIKE '%%{city}%%' AND zip_code = '{zip_code}' AND street_address ILIKE '%%{street}%%')"
+        conditions.append(clause)
 
-    clip_col = 'CLIP'
-    if clip_col not in df.columns:
-        log.error(f"❌ Column '{clip_col}' not found in CSV.")
-        return
+    state_list = "', '".join(sorted(set(df['State'].dropna())))
+    state_filter = f"state IN ('{state_list}')"
+    where_clause = " OR\n    ".join(conditions)
 
-    df[clip_col] = df[clip_col].astype(str).str.strip()
-    unique_clips = df[clip_col].dropna().unique().tolist()
-
-    placeholders = ','.join(['%s'] * len(unique_clips))
-    query = f"""
-        SELECT clip, CONCAT_WS(' ', street_address, unit_number, city, state, zip_code) AS full_address, id
-        FROM properties
-        WHERE clip IN ({placeholders})
+    final_query = f"""
+        SELECT id AS property_id,
+               CONCAT(p.street_address,
+                   CASE WHEN p.unit_number IS NOT NULL AND p.unit_number <> '' THEN ' ' || p.unit_number ELSE '' END,
+                   ', ', p.city, ', ', p.state, ' ', p.zip_code) AS full_address
+        FROM properties p
+        WHERE {state_filter}
+          AND (
+            {where_clause}
+          );
     """
 
-    street_query_results = {}
+    # Log and print query
+    log.info("📄 Final Query to Execute:\n" + final_query)
+    print("\n📄 Final Query to Execute:\n" + final_query)
+
+    # === 💾 Run Query and Save Results ===
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
-                log.info(f"🔎 Sending bulk query for {len(unique_clips)} CLIPs...")
-                cur.execute(query, unique_clips)
-                for clip, address, pid in cur.fetchall():
-                    clip_key = str(clip).strip()
-                    street_query_results.setdefault(clip_key, []).append((address, pid))
+                # Save query to text file
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                query_file = f"executed_sql_query_{timestamp}.sql"
+                abs_query_path = os.path.abspath(query_file)
+                with open(abs_query_path, 'w') as f:
+                    f.write(final_query)
+
+                log.info(f"📝 SQL query saved to: {abs_query_path}")
+                print(f"\n📝 SQL query saved to: {abs_query_path}")
+
+                # Execute query
+                cur.execute(final_query)
+                data = cur.fetchall()
+
+                df_result = pd.DataFrame(data, columns=['property_id', 'full_address'])
+
+                out_file = f"matched_properties_by_address_{timestamp}.csv"
+                abs_out_path = os.path.abspath(out_file)
+
+                df_result.to_csv(abs_out_path, index=False)
+
+                log.info("✅ DONE")
+                log.info(f"📄 Output file saved at: {abs_out_path}")
+                print(f"\n📄 Output file saved at: {abs_out_path}\n")
+
     except Exception as e:
-        log.error(f"❌ Bulk CLIP query failed: {e}")
-        return
-
-    # === 🔗 Fuzzy Matching with Cached Results ===
-    log.info("🔗 Fuzzy matching...")
-    matched, unmatched = [], []
-
-    for _, row in df.iterrows():
-        full_csv_addr = row['full_address']
-        street = row['street_address']
-        db_matches = street_query_results.get(street, [])
-        best_match = best_fuzzy_match(full_csv_addr, db_matches)
-
-        output = {
-            'original_address': full_csv_addr,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-
-        if best_match:
-            output.update({
-                'matched_address': best_match[0],
-                'property_id': best_match[1]
-            })
-            matched.append(output)
-        else:
-            unmatched.append(output)
-
-        # === 📤 OUTPUT FILES ===
-    matched_df = pd.DataFrame(matched)
-    unmatched_df = pd.DataFrame(unmatched)
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-    matched_file = f"matched_transactions_comparison_with_db_{timestamp}.csv"
-    unmatched_file = f"unmatched_transactions_comparison_with_db_{timestamp}.csv"
-
-    matched_df.to_csv(matched_file, index=False)
-    unmatched_df.to_csv(unmatched_file, index=False)
-
-    log.info("✅ DONE")
-    log.info(f"📄 Matched file: {matched_file}")
-    log.info(f"📄 Unmatched file: {unmatched_file}")
-
+        log.error(f"❌ Failed DB query execution: {e}")
 
 if __name__ == "__main__":
     main()
