@@ -72,7 +72,7 @@ def normalize_state(state_name):
 # === 🚀 MAIN EXECUTION ===
 def main():
     log.info("📥 Loading CSV...")
-    csv_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/Agent investigations - Michael Horwitz (2025-05-29)_ unmatched_2.csv'
+    csv_path = '/Users/dmytrokovalchuk/Desktop/homeIQ/query_executor/Michael Horwitz - carrie_lingo.csv'
     if not os.path.exists(csv_path):
         log.error(f"❌ File not found: {csv_path}")
         return
@@ -89,25 +89,26 @@ def main():
             log.error(f"❌ Missing required column: {col}")
             return
 
-    df = df[required_cols].dropna()
+    df = df[required_cols + [col for col in df.columns if col.strip().lower() == 'clip']]
     df['State'] = df['State'].apply(normalize_state)
+    df = df.dropna(subset=required_cols)
 
     log.info("🧠 Building WHERE clauses...")
     conditions = []
     for _, row in df.iterrows():
         city = row['City'].strip().lower()
         zip_code = str(row['Zip Code']).strip()
-        state = row['State'].strip()
         street = row['Address'].strip().lower()
-
         clause = f"(city ILIKE '%%{city}%%' AND zip_code = '{zip_code}' AND street_address ILIKE '%%{street}%%')"
         conditions.append(clause)
 
     state_list = "', '".join(sorted(set(df['State'].dropna())))
     state_filter = f"state IN ('{state_list}')"
     where_clause = " OR\n    ".join(conditions)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    final_query = f"""
+    # === 🧾 First Query - Property Matching
+    property_query = f"""
         SELECT id AS property_id,
                CONCAT(p.street_address,
                    CASE WHEN p.unit_number IS NOT NULL AND p.unit_number <> '' THEN ' ' || p.unit_number ELSE '' END,
@@ -118,42 +119,83 @@ def main():
             {where_clause}
           );
     """
+    property_query_file = f"executed_property_query_{timestamp}.sql"
+    with open(property_query_file, 'w') as f:
+        f.write(property_query)
 
-    # Log and print query
-    log.info("📄 Final Query to Execute:\n" + final_query)
-    print("\n📄 Final Query to Execute:\n" + final_query)
+    # === 🧾 Second Query - Sales Info by Clip
+    clip_column = next((col for col in df.columns if col.strip().lower() == 'clip'), None)
+    if not clip_column:
+        log.error("❌ No 'clip' column found in CSV. Cannot proceed with sales query.")
+        return
 
-    # === 💾 Run Query and Save Results ===
+    clips = df[clip_column].dropna().astype(str).str.strip().unique()
+    if len(clips) == 0:
+        log.warning("⚠️ No valid clip values found in CSV for sales query.")
+        return
+
+    clip_str = ', '.join(f"'{c}'" for c in clips)
+
+    sales_query = f"""
+        SELECT s.duplicate, s.deleted,
+               s.listing_agent_id, s.listing_co_agent_id,
+               s.buyer_agent_id, s.buyer_co_agent_id,
+               CONCAT(p.street_address,
+                   CASE WHEN p.unit_number IS NOT NULL AND p.unit_number <> '' THEN ' ' || p.unit_number ELSE '' END,
+                   ', ', p.city, ', ', p.state, ' ', p.zip_code
+               ) AS full_address,
+               s.sale_date, s.sale_price, s.id AS sale_id,
+               p.clip AS property_clip, s.clip AS sale_clip, p.id
+        FROM sales s
+        INNER JOIN properties p ON p.id = s.property_id
+        WHERE s.clip IN ({clip_str})
+        ORDER BY p.street_address DESC;
+    """
+    sales_query_file = f"executed_sales_query_{timestamp}.sql"
+    with open(sales_query_file, 'w') as f:
+        f.write(sales_query)
+
+    log.info(f"📄 Property query saved: {os.path.abspath(property_query_file)}")
+    log.info(f"📄 Sales query saved: {os.path.abspath(sales_query_file)}")
+
+    # === 🧪 DB Execution
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
-                # Save query to text file
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                query_file = f"executed_sql_query_{timestamp}.sql"
-                abs_query_path = os.path.abspath(query_file)
-                with open(abs_query_path, 'w') as f:
-                    f.write(final_query)
+                # Property query execution
+                cur.execute(property_query)
+                df_props = pd.DataFrame(cur.fetchall(), columns=['property_id', 'full_address'])
+                prop_csv = f"matched_properties_by_address_{timestamp}.csv"
+                abs_prop_csv = os.path.abspath(prop_csv)
+                df_props.to_csv(abs_prop_csv, index=False)
+                log.info(f"✅ Property CSV saved at: {abs_prop_csv}")
+                print(f"\n✅ Property CSV saved at: {abs_prop_csv}")
 
-                log.info(f"📝 SQL query saved to: {abs_query_path}")
-                print(f"\n📝 SQL query saved to: {abs_query_path}")
+                # Show property SQL path in console
+                abs_property_query_path = os.path.abspath(property_query_file)
+                print(f"\n📄 Property SQL query saved to: {abs_property_query_path}")
 
-                # Execute query
-                cur.execute(final_query)
-                data = cur.fetchall()
+                # Sales query execution
+                cur.execute(sales_query)
+                sales_columns = [
+                    'duplicate', 'deleted', 'listing_agent_id', 'listing_co_agent_id',
+                    'buyer_agent_id', 'buyer_co_agent_id', 'full_address', 'sale_date',
+                    'sale_price', 'sale_id', 'property_clip', 'sale_clip', 'property_id'
+                ]
+                df_sales = pd.DataFrame(cur.fetchall(), columns=sales_columns)
+                sales_csv = f"matched_sales_by_clip_{timestamp}.csv"
+                abs_sales_csv = os.path.abspath(sales_csv)
+                df_sales.to_csv(abs_sales_csv, index=False)
+                log.info(f"✅ Sales CSV saved at: {abs_sales_csv}")
+                print(f"\n✅ Sales CSV saved at: {abs_sales_csv}")
 
-                df_result = pd.DataFrame(data, columns=['property_id', 'full_address'])
-
-                out_file = f"matched_properties_by_address_{timestamp}.csv"
-                abs_out_path = os.path.abspath(out_file)
-
-                df_result.to_csv(abs_out_path, index=False)
-
-                log.info("✅ DONE")
-                log.info(f"📄 Output file saved at: {abs_out_path}")
-                print(f"\n📄 Output file saved at: {abs_out_path}\n")
+                # Show sales SQL path in console
+                abs_sales_query_path = os.path.abspath(sales_query_file)
+                print(f"\n📄 Sales SQL query saved to: {abs_sales_query_path}")
 
     except Exception as e:
         log.error(f"❌ Failed DB query execution: {e}")
+
 
 if __name__ == "__main__":
     main()
